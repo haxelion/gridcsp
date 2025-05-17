@@ -1,0 +1,9 @@
+[package]
+name = "gridcsp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+serde = { version = "1", features = ["derive"] }
+splr = "0.17"
