@@ -1,6 +1,6 @@
 use crate::constraints::*;
 use crate::error::GridCspError;
-use crate::model::{Cell, Problem};
+use crate::model::{Cell, GenericProblem, GridDimensions};
 
 use std::borrow::Borrow;
 
@@ -14,17 +14,19 @@ pub struct GridCspSolver {
 }
 
 impl GridCspSolver {
-    pub fn new(grid_size: usize) -> Self {
+    pub fn new(grid: GridDimensions) -> Self {
         let mut this = GridCspSolver {
             var_count: 0,
-            grid_vars: Vec::with_capacity(grid_size),
+            grid_vars: Vec::with_capacity(grid.width),
             clauses: Vec::new(),
         };
         // Generate cell vars
-        for x in 0..grid_size {
-            this.grid_vars.push(Vec::with_capacity(grid_size));
-            for _y in 0..grid_size {
-                let vars: Vec<i32> = (0..grid_size).map(|_| this.alloc_var().unwrap()).collect();
+        for x in 0..grid.width {
+            this.grid_vars.push(Vec::with_capacity(grid.height));
+            for _y in 0..grid.height {
+                let vars: Vec<i32> = (0..grid.number_max)
+                    .map(|_| this.alloc_var().unwrap())
+                    .collect();
                 this.add_exactly_one_clause(&vars);
                 this.grid_vars[x].push(vars);
             }
@@ -158,21 +160,21 @@ impl GridCspSolver {
     }
 }
 
-impl TryFrom<Problem> for GridCspSolver {
+impl TryFrom<GenericProblem> for GridCspSolver {
     type Error = GridCspError;
 
-    fn try_from(problem: Problem) -> Result<Self, Self::Error> {
+    fn try_from(problem: GenericProblem) -> Result<Self, Self::Error> {
         problem.validate()?;
-        let mut csp = GridCspSolver::new(problem.grid_size);
+        let mut csp = GridCspSolver::new(problem.grid);
         for cg in problem.constraints.iter() {
-            let cells = cg.group.to_cells(problem.grid_size);
+            let cells = cg.group.to_cells(problem.grid);
             match cg.constraint {
                 crate::model::Constraint::Add(v) => {
-                    let solutions = add_enumerator(v, cells.len(), problem.grid_size as u64);
+                    let solutions = add_enumerator(v, cells.len(), problem.grid.number_max);
                     csp.add_permutation_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Div(v) => {
-                    let solutions = div_enumerator(v, cells.len(), problem.grid_size as u64);
+                    let solutions = div_enumerator(v, cells.len(), problem.grid.number_max);
                     csp.add_permutation_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Equal(v) => {
@@ -182,11 +184,11 @@ impl TryFrom<Problem> for GridCspSolver {
                     }
                 }
                 crate::model::Constraint::Mul(v) => {
-                    let solutions = mul_enumerator(v, cells.len(), problem.grid_size as u64);
+                    let solutions = mul_enumerator(v, cells.len(), problem.grid.number_max);
                     csp.add_permutation_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Sub(v) => {
-                    let solutions = sub_enumerator(v, cells.len(), problem.grid_size as u64);
+                    let solutions = sub_enumerator(v, cells.len(), problem.grid.number_max);
                     csp.add_permutation_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Unique => {
@@ -194,8 +196,10 @@ impl TryFrom<Problem> for GridCspSolver {
                         .iter()
                         .map(|c| csp.get_cell_vars(c).to_vec())
                         .collect();
-                    for v in 0..problem.grid_size {
-                        csp.add_amo_clause(vars.iter().map(|vs| vs[v]).collect::<Vec<i32>>());
+                    for v in 0..problem.grid.number_max {
+                        csp.add_amo_clause(
+                            vars.iter().map(|vs| vs[v as usize]).collect::<Vec<i32>>(),
+                        );
                     }
                 }
             }

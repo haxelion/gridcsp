@@ -11,6 +11,7 @@ pub enum GridCspError {
     SquareOutOfBound(usize, usize),
     ConstrainedGroupTooSmall,
     ConstrainedGroupTooBig,
+    UnsupportedSudokuSize,
     TooManyVariables,
     SolverError(SolverError),
     NoSolution,
@@ -35,6 +36,7 @@ impl fmt::Display for GridCspError {
             }
             GridCspError::ConstrainedGroupTooSmall => write!(f, "Constrained group is too small"),
             GridCspError::ConstrainedGroupTooBig => write!(f, "Constrained group is too big"),
+            GridCspError::UnsupportedSudokuSize => write!(f, "Sudoku size is not a perfect square"),
             GridCspError::TooManyVariables => write!(f, "Problem has too many variables"),
             GridCspError::SolverError(err) => write!(f, "Solver error: {}", err),
             GridCspError::NoSolution => write!(f, "Problem has no solution"),
