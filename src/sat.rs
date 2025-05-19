@@ -48,7 +48,7 @@ impl GridCspSolver {
     }
 
     pub fn add_clause(&mut self, clause: Vec<i32>) {
-        debug_assert!(clause.len() > 0);
+        debug_assert!(!clause.is_empty());
         debug_assert!(clause.iter().all(|v| *v != 0));
         debug_assert!(clause.iter().all(|v| v.abs() <= self.var_count));
         self.clauses.push(clause)
@@ -95,7 +95,7 @@ impl GridCspSolver {
                     self.add_and_clause(
                         vs.iter()
                             .enumerate()
-                            .map(|(i, v)| self.get_cell_vars(&cells[perm[i]])[*v as usize - 1])
+                            .map(|(i, v)| self.get_cell_vars(cells[perm[i]])[*v as usize - 1])
                             .collect::<Vec<i32>>(),
                     )?,
                 );
@@ -141,6 +141,7 @@ impl GridCspSolver {
         Ok(grid)
     }
 
+    #[allow(clippy::needless_range_loop)]
     pub fn solve_unique(&mut self) -> Result<Vec<Vec<u64>>, GridCspError> {
         let grid = self.solve()?;
 
@@ -180,7 +181,7 @@ impl TryFrom<GenericProblem> for GridCspSolver {
                 crate::model::Constraint::Equal(v) => {
                     for cell in cells.iter() {
                         let vars = csp.get_cell_vars(cell);
-                        csp.add_alo_clause(&[vars[v as usize - 1]]);
+                        csp.add_alo_clause([vars[v as usize - 1]]);
                     }
                 }
                 crate::model::Constraint::Mul(v) => {

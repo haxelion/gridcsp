@@ -142,11 +142,7 @@ impl CellGroup {
                     return Err(GridCspError::SquareOutOfBound(x + width, y + height));
                 }
             }
-            CellGroup::List(cells) => {
-                cells
-                    .iter()
-                    .fold(Ok(()), |acc, c| acc.and(c.validate(grid)))?;
-            }
+            CellGroup::List(cells) => cells.iter().try_for_each(|c| c.validate(grid))?,
         }
         Ok(())
     }
@@ -201,7 +197,7 @@ impl GenericProblem {
     pub fn validate(&self) -> Result<(), GridCspError> {
         self.constraints
             .iter()
-            .fold(Ok(()), |acc, c| acc.and(c.validate(self.grid)))
+            .try_for_each(|c| c.validate(self.grid))
     }
 }
 

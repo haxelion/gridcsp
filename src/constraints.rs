@@ -1,5 +1,3 @@
-use std::iter::repeat;
-
 fn prime_factors(mut n: u64) -> Vec<u64> {
     let mut factors = Vec::new();
     let mut m = 2u64;
@@ -16,40 +14,39 @@ fn prime_factors(mut n: u64) -> Vec<u64> {
         factors.push(n);
     }
 
-    return factors;
+    factors
 }
 
 fn checked_sum(values: impl AsRef<[u64]>) -> Option<u64> {
     values
         .as_ref()
         .iter()
-        .fold(Some(0u64), |acc, v| acc.and_then(|a| a.checked_add(*v)))
+        .try_fold(0u64, |acc, v| acc.checked_add(*v))
 }
 
 fn checked_product(values: impl AsRef<[u64]>) -> Option<u64> {
     values
         .as_ref()
         .iter()
-        .fold(Some(1u64), |acc, v| acc.and_then(|a| a.checked_mul(*v)))
+        .try_fold(1u64, |acc, v| acc.checked_mul(*v))
 }
 
 pub fn add_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<Vec<u64>> {
     let mut solutions = Vec::new();
-    let mut current: Vec<u64> = repeat(1).take(number_count).collect();
+    let mut current: Vec<u64> = std::iter::repeat_n(1, number_count).collect();
 
     'search: loop {
         if let Some(remainder) =
             checked_sum(&current[0..number_count - 1]).and_then(|s| target.checked_sub(s))
+            && remainder <= number_max
         {
-            if remainder <= number_max {
-                current[number_count - 1] = remainder;
-                solutions.push(current.clone());
-            }
+            current[number_count - 1] = remainder;
+            solutions.push(current.clone());
         }
         for i in (0..number_count - 1).rev() {
             let n = current[i] + 1;
             current[i..].fill(n);
-            if current[i] + 1 <= number_max && checked_sum(&current).is_some_and(|s| s <= target) {
+            if current[i] < number_max && checked_sum(&current).is_some_and(|s| s <= target) {
                 break;
             }
             if i == 0 {
@@ -58,26 +55,25 @@ pub fn add_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<
         }
     }
 
-    return solutions;
+    solutions
 }
 
 pub fn sub_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<Vec<u64>> {
     let mut solutions = Vec::new();
-    let mut current: Vec<u64> = repeat(1).take(number_count).collect();
+    let mut current: Vec<u64> = std::iter::repeat_n(1, number_count).collect();
 
     'search: loop {
         if let Some(remainder) =
             checked_sum(&current[0..number_count - 1]).and_then(|s| s.checked_add(target))
+            && remainder <= number_max
         {
-            if remainder <= number_max {
-                current[number_count - 1] = remainder;
-                solutions.push(current.clone());
-            }
+            current[number_count - 1] = remainder;
+            solutions.push(current.clone());
         }
         for i in (0..number_count - 1).rev() {
             let n = current[i] + 1;
             current[i..].fill(n);
-            if current[i] + 1 <= number_max
+            if current[i] < number_max
                 && checked_sum(&current[0..number_count - 1])
                     .and_then(|s| s.checked_add(target))
                     .is_some_and(|s| s <= number_max)
@@ -90,16 +86,16 @@ pub fn sub_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<
         }
     }
 
-    return solutions;
+    solutions
 }
 
 pub fn mul_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<Vec<u64>> {
     let mut solutions = Vec::new();
     let factors = prime_factors(target);
-    let mut indexes: Vec<usize> = repeat(0).take(factors.len()).collect();
+    let mut indexes: Vec<usize> = std::iter::repeat_n(0, factors.len()).collect();
 
     'search: loop {
-        let mut solution: Vec<u64> = repeat(1).take(number_count).collect();
+        let mut solution: Vec<u64> = std::iter::repeat_n(1, number_count).collect();
         for i in 0..indexes.len() {
             solution[indexes[i]] *= factors[i];
         }
@@ -121,26 +117,25 @@ pub fn mul_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<
         }
     }
 
-    return solutions;
+    solutions
 }
 
 pub fn div_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<Vec<u64>> {
     let mut solutions = Vec::new();
-    let mut current: Vec<u64> = repeat(1).take(number_count).collect();
+    let mut current: Vec<u64> = std::iter::repeat_n(1, number_count).collect();
 
     'search: loop {
         if let Some(remainder) =
             checked_product(&current[0..number_count - 1]).and_then(|p| p.checked_mul(target))
+            && remainder <= number_max
         {
-            if remainder <= number_max {
-                current[number_count - 1] = remainder;
-                solutions.push(current.clone());
-            }
+            current[number_count - 1] = remainder;
+            solutions.push(current.clone());
         }
         for i in (0..number_count - 1).rev() {
             let n = current[i] + 1;
             current[i..].fill(n);
-            if current[i] + 1 <= number_max
+            if current[i] < number_max
                 && checked_product(&current[0..number_count - 1])
                     .and_then(|p| p.checked_mul(target))
                     .is_some_and(|p| p <= number_max)
@@ -153,7 +148,7 @@ pub fn div_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<
         }
     }
 
-    return solutions;
+    solutions
 }
 
 #[cfg(test)]
