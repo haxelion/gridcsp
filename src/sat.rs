@@ -1,9 +1,11 @@
+use crate::constraints::*;
 use crate::error::GridCspError;
 use crate::model::{Cell, Problem};
 
 use std::borrow::Borrow;
 
-use splr::{Certificate, Config, SatSolverIF, SolveIF, Solver};
+use itertools::Itertools;
+use splr::{Certificate, Config, SolveIF, Solver};
 
 pub struct GridCspSolver {
     var_count: i32,
@@ -45,12 +47,8 @@ impl GridCspSolver {
 
     pub fn add_clause(&mut self, clause: Vec<i32>) {
         debug_assert!(clause.len() > 0);
-        debug_assert!(clause.iter().fold(true, |acc, v| acc && *v != 0));
-        debug_assert!(
-            clause
-                .iter()
-                .fold(true, |acc, v| acc && v.abs() <= self.var_count)
-        );
+        debug_assert!(clause.iter().all(|v| *v != 0));
+        debug_assert!(clause.iter().all(|v| v.abs() <= self.var_count));
         self.clauses.push(clause)
     }
 
@@ -71,6 +69,39 @@ impl GridCspSolver {
     pub fn add_exactly_one_clause(&mut self, vars: impl AsRef<[i32]>) {
         self.add_alo_clause(vars.as_ref());
         self.add_amo_clause(vars.as_ref());
+    }
+
+    fn add_and_clause(&mut self, vars: impl AsRef<[i32]>) -> Result<i32, GridCspError> {
+        let z = self.alloc_var()?;
+        for v in vars.as_ref().iter() {
+            self.add_clause(vec![-z, *v]);
+        }
+        Ok(z)
+    }
+
+    pub fn add_permutation_clause(
+        &mut self,
+        cells: impl AsRef<[Cell]>,
+        values: impl AsRef<[Vec<u64>]>,
+    ) -> Result<(), GridCspError> {
+        let cells = cells.as_ref();
+        let values = values.as_ref();
+        let mut z_vars = Vec::new();
+        for perm in (0..cells.len()).permutations(cells.len()) {
+            for vs in values.iter() {
+                z_vars.push(
+                    self.add_and_clause(
+                        vs.iter()
+                            .enumerate()
+                            .map(|(i, v)| self.get_cell_vars(&cells[perm[i]])[*v as usize - 1])
+                            .collect::<Vec<i32>>(),
+                    )?,
+                );
+            }
+        }
+        self.add_clause(z_vars);
+
+        Ok(())
     }
 
     pub fn solve(&mut self) -> Result<Vec<Vec<u64>>, GridCspError> {
@@ -107,6 +138,24 @@ impl GridCspSolver {
         }
         Ok(grid)
     }
+
+    pub fn solve_unique(&mut self) -> Result<Vec<Vec<u64>>, GridCspError> {
+        let grid = self.solve()?;
+
+        let mut antisolution = Vec::<i32>::new();
+        for x in 0..grid.len() {
+            for y in 0..grid[x].len() {
+                antisolution.push(-self.grid_vars[x][y][grid[x][y] as usize - 1]);
+            }
+        }
+        self.clauses.push(antisolution);
+        if self.solve().is_ok() {
+            return Err(GridCspError::SolutionNotUnique);
+        }
+        self.clauses.pop();
+
+        Ok(grid)
+    }
 }
 
 impl TryFrom<Problem> for GridCspSolver {
@@ -116,22 +165,32 @@ impl TryFrom<Problem> for GridCspSolver {
         problem.validate()?;
         let mut csp = GridCspSolver::new(problem.grid_size);
         for cg in problem.constraints.iter() {
+            let cells = cg.group.to_cells(problem.grid_size);
             match cg.constraint {
-                crate::model::Constraint::Add(_) => todo!(),
-                crate::model::Constraint::Div(_) => todo!(),
+                crate::model::Constraint::Add(v) => {
+                    let solutions = add_enumerator(v, cells.len(), problem.grid_size as u64);
+                    csp.add_permutation_clause(cells, solutions)?;
+                }
+                crate::model::Constraint::Div(v) => {
+                    let solutions = div_enumerator(v, cells.len(), problem.grid_size as u64);
+                    csp.add_permutation_clause(cells, solutions)?;
+                }
                 crate::model::Constraint::Equal(v) => {
-                    // validate v
-                    for cell in cg.group.to_cells(problem.grid_size).iter() {
+                    for cell in cells.iter() {
                         let vars = csp.get_cell_vars(cell);
                         csp.add_alo_clause(&[vars[v as usize - 1]]);
                     }
                 }
-                crate::model::Constraint::Mul(_) => todo!(),
-                crate::model::Constraint::Sub(_) => todo!(),
+                crate::model::Constraint::Mul(v) => {
+                    let solutions = mul_enumerator(v, cells.len(), problem.grid_size as u64);
+                    csp.add_permutation_clause(cells, solutions)?;
+                }
+                crate::model::Constraint::Sub(v) => {
+                    let solutions = sub_enumerator(v, cells.len(), problem.grid_size as u64);
+                    csp.add_permutation_clause(cells, solutions)?;
+                }
                 crate::model::Constraint::Unique => {
-                    let vars: Vec<Vec<i32>> = cg
-                        .group
-                        .to_cells(problem.grid_size)
+                    let vars: Vec<Vec<i32>> = cells
                         .iter()
                         .map(|c| csp.get_cell_vars(c).to_vec())
                         .collect();

@@ -3,7 +3,7 @@ use std::fmt;
 
 use splr::SolverError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum GridCspError {
     CellOutOfBound(usize, usize),
     ColumnOutOfBound(usize),
@@ -15,6 +15,7 @@ pub enum GridCspError {
     SolverError(SolverError),
     NoSolution,
     UnexpectedSolution,
+    SolutionNotUnique,
 }
 
 impl From<SolverError> for GridCspError {
@@ -38,6 +39,7 @@ impl fmt::Display for GridCspError {
             GridCspError::SolverError(err) => write!(f, "Solver error: {}", err),
             GridCspError::NoSolution => write!(f, "Problem has no solution"),
             GridCspError::UnexpectedSolution => write!(f, "Solver produced unexpected solution"),
+            GridCspError::SolutionNotUnique => write!(f, "Problem has multiple solutions"),
         }
     }
 }

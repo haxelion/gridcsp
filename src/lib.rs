@@ -1,9 +1,11 @@
+mod constraints;
 pub mod error;
 pub mod model;
-mod sat;
+pub mod sat;
 
 #[cfg(test)]
 mod tests {
+
     use crate::{error::GridCspError, model::*, sat::GridCspSolver};
 
     #[test]
@@ -19,7 +21,7 @@ mod tests {
             ],
         };
         let mut csp = GridCspSolver::try_from(problem)?;
-        let solution = csp.solve()?;
+        assert!(csp.solve_unique().is_ok());
         Ok(())
     }
 
@@ -40,12 +42,64 @@ mod tests {
             constraints: groups,
         };
         let mut csp = GridCspSolver::try_from(problem)?;
-        let solution = csp.solve()?;
+        assert!(csp.solve_unique().is_ok());
         Ok(())
     }
 
     #[test]
-    fn sudoku() -> Result<(), GridCspError> {
+    fn underconstrained_3x3() -> Result<(), GridCspError> {
+        let size = 3;
+        let mut groups = Vec::<ConstrainedGroup>::new();
+        for i in 0..size {
+            groups.push(Constraint::Unique.over(CellGroup::Row(i)));
+            groups.push(Constraint::Unique.over(CellGroup::Column(i)));
+            groups
+                .push(CellGroup::List(vec![Cell::new(i, i)]).constrainted_by(Constraint::Equal(1)));
+        }
+        let problem = Problem {
+            grid_size: size,
+            constraints: groups,
+        };
+        let mut csp = GridCspSolver::try_from(problem)?;
+        assert!(csp.solve().is_ok());
+        assert_eq!(csp.solve_unique(), Err(GridCspError::SolutionNotUnique));
+        Ok(())
+    }
+
+    #[test]
+    fn kenken_3x3() -> Result<(), GridCspError> {
+        let size = 3;
+        let mut groups = Vec::<ConstrainedGroup>::new();
+        for i in 0..size {
+            groups.push(Constraint::Unique.over(CellGroup::Row(i)));
+            groups.push(Constraint::Unique.over(CellGroup::Column(i)));
+        }
+
+        groups
+            .push(Constraint::Mul(6).over(CellGroup::List(vec![Cell::new(0, 0), Cell::new(1, 0)])));
+        groups
+            .push(Constraint::Mul(2).over(CellGroup::List(vec![Cell::new(2, 0), Cell::new(2, 1)])));
+        groups.push(Constraint::Mul(6).over(CellGroup::List(vec![
+            Cell::new(0, 1),
+            Cell::new(1, 1),
+            Cell::new(0, 2),
+        ])));
+        groups
+            .push(Constraint::Mul(3).over(CellGroup::List(vec![Cell::new(1, 2), Cell::new(2, 2)])));
+        groups.push(Constraint::Equal(2).over(CellGroup::List(vec![Cell::new(0, 2)])));
+
+        let problem = Problem {
+            grid_size: size,
+            constraints: groups,
+        };
+        let mut csp = GridCspSolver::try_from(problem)?;
+        println!("{:?}", csp.solve_unique().unwrap());
+        //assert!(csp.solve_unique().is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn sudoku_9x9() -> Result<(), GridCspError> {
         let size = 9;
         let mut groups = Vec::<ConstrainedGroup>::new();
         for i in 0..size {
@@ -99,7 +153,7 @@ mod tests {
             constraints: groups,
         };
         let mut csp = GridCspSolver::try_from(problem)?;
-        let solution = csp.solve()?;
+        assert!(csp.solve_unique().is_ok());
         Ok(())
     }
 }
