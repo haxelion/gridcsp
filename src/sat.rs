@@ -14,7 +14,7 @@ pub struct GridCspSolver {
 }
 
 impl GridCspSolver {
-    pub fn new(grid: GridDimensions) -> Self {
+    pub fn new(grid: GridDimensions) -> Result<Self, GridCspError> {
         let mut this = GridCspSolver {
             var_count: 0,
             grid_vars: Vec::with_capacity(grid.width),
@@ -27,11 +27,11 @@ impl GridCspSolver {
                 let vars: Vec<i32> = (0..grid.number_max)
                     .map(|_| this.alloc_var().unwrap())
                     .collect();
-                this.add_exactly_one_clause(&vars);
+                this.add_exactly_one_clause(&vars)?;
                 this.grid_vars[x].push(vars);
             }
         }
-        this
+        Ok(this)
     }
 
     pub fn get_cell_vars(&self, cell: impl Borrow<Cell>) -> &[i32] {
@@ -59,7 +59,6 @@ impl GridCspSolver {
     }
 
     pub fn add_amo_clause(&mut self, vars: impl AsRef<[i32]>) {
-        // TODO: optimize with commander encoding from Kleiner and Kwon paper
         let vars = vars.as_ref();
         for i in 0..vars.len() {
             for j in i + 1..vars.len() {
@@ -68,38 +67,54 @@ impl GridCspSolver {
         }
     }
 
-    pub fn add_exactly_one_clause(&mut self, vars: impl AsRef<[i32]>) {
-        self.add_alo_clause(vars.as_ref());
-        self.add_amo_clause(vars.as_ref());
-    }
-
-    fn add_and_clause(&mut self, vars: impl AsRef<[i32]>) -> Result<i32, GridCspError> {
-        let z = self.alloc_var()?;
-        for v in vars.as_ref().iter() {
-            self.add_clause(vec![-z, *v]);
+    pub fn add_exactly_one_clause(&mut self, vars: impl AsRef<[i32]>) -> Result<(), GridCspError> {
+        // Adapted commander encoding from Kleiner and Kwon paper
+        let mut current = vars.as_ref().to_vec();
+        let mut next = Vec::<i32>::with_capacity(current.len() / 3 + 1);
+        while current.len() > 3 {
+            for group in current.chunks(3) {
+                if group.len() > 1 {
+                    let c = self.alloc_var()?;
+                    for i in 0..group.len() {
+                        for j in i + 1..group.len() {
+                            self.add_clause(vec![-group[i], -group[j]]);
+                        }
+                        self.add_clause(vec![c, -group[i]])
+                    }
+                    self.add_clause([&[-c], group].concat());
+                    next.push(c);
+                } else {
+                    next.push(group[0]);
+                }
+            }
+            std::mem::swap(&mut current, &mut next);
+            next.clear();
         }
-        Ok(z)
+        self.add_alo_clause(&current);
+        self.add_amo_clause(&current);
+        Ok(())
     }
 
-    pub fn add_permutation_clause(
+    pub fn add_alternative_clause(
         &mut self,
         cells: impl AsRef<[Cell]>,
-        values: impl AsRef<[Vec<u64>]>,
+        solutions: impl AsRef<[Vec<u64>]>,
     ) -> Result<(), GridCspError> {
         let cells = cells.as_ref();
-        let values = values.as_ref();
+        let solutions = solutions.as_ref();
         let mut z_vars = Vec::new();
-        for perm in (0..cells.len()).permutations(cells.len()) {
-            for vs in values.iter() {
-                z_vars.push(
-                    self.add_and_clause(
-                        vs.iter()
-                            .enumerate()
-                            .map(|(i, v)| self.get_cell_vars(cells[perm[i]])[*v as usize - 1])
-                            .collect::<Vec<i32>>(),
-                    )?,
-                );
+        for solution in solutions.iter() {
+            let z = self.alloc_var()?;
+            for (count, value) in solution.iter().dedup_with_count() {
+                let vars: Vec<i32> = cells
+                    .iter()
+                    .map(|c| self.get_cell_vars(c)[*value as usize - 1])
+                    .collect();
+                for indexes in (0..vars.len()).combinations(cells.len() + 1 - count) {
+                    self.add_clause([vec![-z], indexes.iter().map(|i| vars[*i]).collect()].concat())
+                }
             }
+            z_vars.push(z);
         }
         self.add_clause(z_vars);
 
@@ -166,17 +181,17 @@ impl TryFrom<GenericProblem> for GridCspSolver {
 
     fn try_from(problem: GenericProblem) -> Result<Self, Self::Error> {
         problem.validate()?;
-        let mut csp = GridCspSolver::new(problem.grid);
+        let mut csp = GridCspSolver::new(problem.grid)?;
         for cg in problem.constraints.iter() {
             let cells = cg.group.to_cells(problem.grid);
             match cg.constraint {
                 crate::model::Constraint::Add(v) => {
                     let solutions = add_enumerator(v, cells.len(), problem.grid.number_max);
-                    csp.add_permutation_clause(cells, solutions)?;
+                    csp.add_alternative_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Div(v) => {
                     let solutions = div_enumerator(v, cells.len(), problem.grid.number_max);
-                    csp.add_permutation_clause(cells, solutions)?;
+                    csp.add_alternative_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Equal(v) => {
                     for cell in cells.iter() {
@@ -186,11 +201,11 @@ impl TryFrom<GenericProblem> for GridCspSolver {
                 }
                 crate::model::Constraint::Mul(v) => {
                     let solutions = mul_enumerator(v, cells.len(), problem.grid.number_max);
-                    csp.add_permutation_clause(cells, solutions)?;
+                    csp.add_alternative_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Sub(v) => {
                     let solutions = sub_enumerator(v, cells.len(), problem.grid.number_max);
-                    csp.add_permutation_clause(cells, solutions)?;
+                    csp.add_alternative_clause(cells, solutions)?;
                 }
                 crate::model::Constraint::Unique => {
                     let vars: Vec<Vec<i32>> = cells

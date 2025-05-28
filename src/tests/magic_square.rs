@@ -50,6 +50,6 @@ fn magic_square_4x4() -> Result<(), GridCspError> {
     )
     .unwrap();
     let mut csp = GridCspSolver::try_from(GenericProblem::from(problem))?;
-    let _ = csp.solve()?;
+    csp.solve()?;
     Ok(())
 }

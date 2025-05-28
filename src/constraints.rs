@@ -1,3 +1,5 @@
+use std::iter::repeat_n;
+
 fn prime_factors(mut n: u64) -> Vec<u64> {
     let mut factors = Vec::new();
     let mut m = 2u64;
@@ -14,6 +16,34 @@ fn prime_factors(mut n: u64) -> Vec<u64> {
         factors.push(n);
     }
 
+    factors
+}
+
+fn factors(n: u64) -> Vec<u64> {
+    let prime_factors = prime_factors(n);
+    let mut factors = Vec::new();
+    let mut selected: Vec<bool> = repeat_n(false, prime_factors.len()).collect();
+
+    while selected.iter().any(|s| !s) {
+        factors.push(
+            prime_factors
+                .iter()
+                .zip(selected.iter())
+                .fold(1u64, |acc, (p, s)| if *s { acc * p } else { acc }),
+        );
+        for s in selected.iter_mut() {
+            if *s {
+                *s = false;
+            } else {
+                *s = true;
+                break;
+            }
+        }
+    }
+
+    factors.push(n);
+    factors.sort();
+    factors.dedup();
     factors
 }
 
@@ -90,30 +120,63 @@ pub fn sub_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<
 }
 
 pub fn mul_enumerator(target: u64, number_count: usize, number_max: u64) -> Vec<Vec<u64>> {
+    let factors = factors(target);
+    let factor_upper_bound = factors
+        .iter()
+        .enumerate()
+        .find(|(_, f)| **f > number_max)
+        .map(|(i, _)| i)
+        .unwrap_or(factors.len());
     let mut solutions = Vec::new();
-    let factors = prime_factors(target);
-    let mut indexes: Vec<usize> = std::iter::repeat_n(0, factors.len()).collect();
+    let mut current = Vec::with_capacity(number_count - 1);
+    let mut remainder = target;
+    current.push(0);
 
-    'search: loop {
-        let mut solution: Vec<u64> = std::iter::repeat_n(1, number_count).collect();
-        for i in 0..indexes.len() {
-            solution[indexes[i]] *= factors[i];
-        }
-        if solution.iter().all(|s| *s <= number_max) {
-            solution.sort();
-            if !solutions.contains(&solution) {
-                solutions.push(solution);
-            }
-        }
-        for i in (0..indexes.len()).rev() {
-            if indexes[i] + 1 < number_count {
-                indexes[i] += 1;
-                indexes[i + 1..].fill(0);
+    while !current.is_empty() {
+        let depth = current.len();
+        let mut backtrack = true;
+        // Adjust last idx of current so that current forms a solution prefix
+        for (i, f) in factors
+            .iter()
+            .enumerate()
+            .take(factor_upper_bound)
+            .skip(current[depth - 1])
+        {
+            // Factor pow check is meant to prune impossible prefixes
+            if remainder % f == 0
+                && f.checked_pow((number_count + 1 - depth) as u32)
+                    .is_some_and(|p| p <= remainder)
+            {
+                remainder /= f;
+                current[depth - 1] = i;
+                backtrack = false;
                 break;
             }
-            if i == 0 {
-                break 'search;
+        }
+        if backtrack {
+            // Backtrack if it failed to find a solution prefix
+            current.pop();
+            if let Some(prev_idx) = current.last_mut() {
+                remainder *= factors[*prev_idx];
+                *prev_idx += 1;
             }
+        } else if current.len() < number_count - 1 {
+            // If we have a valid but incomplete solution prefix, we extend by one number
+            current.push(current[depth - 1]);
+        } else if current.len() == number_count - 1 {
+            // If our prefix has reached number_count - 1, we check if it forms a valid solution with the remainder
+            if factors[current[depth - 1]] <= remainder && remainder <= number_max {
+                solutions.push(
+                    current
+                        .iter()
+                        .map(|i| factors[*i])
+                        .chain([remainder])
+                        .collect(),
+                );
+            }
+            // we start over the search from the last index of current
+            remainder *= factors[current[depth - 1]];
+            current[depth - 1] += 1;
         }
     }
 
@@ -192,11 +255,25 @@ mod tests {
         assert_eq!(mul_enumerator(3, 2, 3), vec![vec![1, 3]]);
         assert_eq!(
             mul_enumerator(12, 3, 6),
-            vec![vec![1, 3, 4], vec![1, 2, 6], vec![2, 2, 3]]
+            vec![vec![1, 2, 6], vec![1, 3, 4], vec![2, 2, 3]]
         );
         assert_eq!(
             mul_enumerator(30, 3, 10),
-            vec![vec![1, 5, 6], vec![1, 3, 10], vec![2, 3, 5]]
+            vec![vec![1, 3, 10], vec![1, 5, 6], vec![2, 3, 5]]
+        );
+        assert_eq!(
+            mul_enumerator(45, 3, 10),
+            vec![vec![1, 5, 9], vec![3, 3, 5]]
+        );
+        assert_eq!(
+            mul_enumerator(60, 4, 10),
+            vec![
+                [1, 1, 6, 10],
+                [1, 2, 3, 10],
+                [1, 2, 5, 6],
+                [1, 3, 4, 5],
+                [2, 2, 3, 5]
+            ]
         );
     }
 
